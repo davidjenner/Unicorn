@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#Please only use this for ethical reason on your own website or websites you have been given permission to test on!
+
 cat ascii_art.txt
 
 # for when used with website form
