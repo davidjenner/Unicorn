@@ -33,6 +33,14 @@ ip=$(curl -s https://whatismyipaddress.com/ | grep -oP 'Your IP Address[^<]*\K[\
 
 echo "Your IP address is: $ip"
 
+
+printf '\n************\n* HTTP Headers *\n************\n\n'
+
+
+headers=$(curl -s -I $url)
+
+echo "$headers"
+
 printf '\n************\n* SERVER INFORMATION *\n************\n\n'
 
 # Type of server website is running on
@@ -55,13 +63,6 @@ echo "IP address: $ip"
 echo "Location: $location"
 echo "Software: $software"
 
-# Print network information
-echo "Network Information:"
-echo "--------------------"
-ifconfig
-echo ""
-
-location=$(dig +short -x $ip)
 
 
 printf '\n************\n* DNS Details inc Domain Registrar *\n************\n\n'
@@ -221,114 +222,3 @@ wp_plugins=$(curl -s -L $url/wp-admin/plugins.php | grep -o -E '<span class="plu
         echo "No WordPress plugins detected."
     fi
 
-
-printf '\n************\n* WP Scan plugins Plugins 1 *\n************\n\n'
-
-# Get the URL from the command line argument
-url=$1
-
-# Run WPScan to get plugin details
-wpscan_result=$(wpscan --url $url --plugins-detection mixed --no-banner --disable-tls-checks --random-agent)
-
-# Output the results
-echo "$wpscan_result"
-
-
-printf '\n************\n* Email *\n************\n\n'
-
-
-
-echo "Searching for email addresses on $url..."
-
-emails=$(curl -s $url | grep -E -o "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-
-if [[ -n "$emails" ]]; then
-    echo "The following email addresses were found on the website:"
-    echo "$emails"
-else
-    echo "No email addresses were found on the website."
-fi
-
-
-printf '\n************\n* Broken Pages and Images *\n************\n\n'
-
-
-
-# Get list of all pages on website
-echo "Getting list of all pages on website..."
-pages=$(wget --spider -r -nd "$url" 2>&1 | grep '^--' | awk '{print $3}' | grep -v '\.\(css\|js\|png\|gif\|jpg\)$')
-
-# Create array to store pages with errors
-error_pages=()
-
-# Loop through pages and check for errors
-for page in $pages; do
-    echo "Checking page: $page"
-    # Use curl to check for HTTP errors
-    if ! curl --output /dev/null --silent --head --fail "$page"; then
-        echo "Page $page returned an error."
-        error_pages+=("$page")
-    fi
-done
-
-# Print out any pages with errors
-if [ ${#error_pages[@]} -eq 0 ]; then
-    echo "No errors found on any pages."
-else
-    echo "Errors found on the following pages:"
-    printf '%s\n' "${error_pages[@]}"
-fi
-
-# Get list of all images on website
-echo "Getting list of all images on website..."
-images=$(wget --spider -r -nd "$url" 2>&1 | grep '^--' | awk '{print $3}' | grep -E '.(png|jpg|jpeg|gif)$')
-
-# Create array to store images with errors
-error_images=()
-
-# Loop through images and check for errors
-for image in $images; do
-    echo "Checking image: $image"
-    # Use curl to check for HTTP errors
-    if ! curl --output /dev/null --silent --head --fail "$image"; then
-        echo "Image $image returned an error."
-        error_images+=("$image")
-    fi
-done
-
-# Print out any images with errors
-if [ ${#error_images[@]} -eq 0 ]; then
-    echo "No errors found on any images."
-else
-    echo "Errors found on the following images:"
-    printf '%s\n' "${error_images[@]}"
-fi
-
-echo "Scan complete."
-
-
-printf '\n************\n* Check for vulnerabilities *\n************\n\n'
-
-
-if [ "$#" -ne 1 ]; then
-    echo "Usage: ./web-checker.sh <website>"
-    exit
-fi
-
-website=$1
-
-
-# run nikto vulnerability scan
-echo "Running nikto vulnerability scan on $website..."
-nikto -h $website -output nikto_scan.txt -Format htm
-
-# extract vulnerabilities from nikto scan results
-echo "Extracting vulnerabilities from Nikto scan results..."
-grep "^[+]*[0-9]* vulnerabilities" nikto_scan.txt | sed -e 's/\(.*\)\([0-9]\+ vulnerabilities\)\(.*\)/\2/g' > nikto_vulns.txt
-
-# check if any vulnerabilities were found
-if [ ! -s nikto_vulns.txt ]; then
-    echo "No vulnerabilities were found on $website."
-else
-    echo "The following vulnerabilities were found on $website:"
-fi
