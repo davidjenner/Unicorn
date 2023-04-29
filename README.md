@@ -7,6 +7,7 @@ The code displays an ASCII art banner, prompts the user to enter a website URL, 
 What this can find
 - Website live
 - Whois info
+- HTTP Headers
 - SSL info
 - Page speed
 - WordPress Verison
@@ -17,3 +18,4 @@ Working progress
 - WordPress Plugins
 - Email Addresses
 - Broken links
+- Developer comments
