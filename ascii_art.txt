@@ -25,6 +25,7 @@
                ,.-' >.'
               <.'_.''
                 <'
-
+WARNING: This tool is intended for ethical use only, never use this on a site you don't have permission to test on. 
+Created using ChatGPT by github.com/davidjenner
 ===============================================
 >>> 
