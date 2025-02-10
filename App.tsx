@@ -1,4 +1,4 @@
-// src/App.tsx
+// App.tsx
 import { useState } from "react";
 
 export default function App() {
