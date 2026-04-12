@@ -1,0 +1,24 @@
+[build]
+  command   = "npm run build"
+  publish   = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Route /api/scan to the serverless function
+[[redirects]]
+  from   = "/api/scan"
+  to     = "/.netlify/functions/scan"
+  status = 200
+
+[[redirects]]
+  from   = "/api/health"
+  to     = "/.netlify/functions/scan"
+  status = 200
+
+# SPA fallback — all other routes serve index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

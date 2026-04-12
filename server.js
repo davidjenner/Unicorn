@@ -1,27 +1,47 @@
-// server.js
-const express = require("express");
-const cors = require("cors");
-const { exec } = require("child_process");
+'use strict';
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const express    = require('express');
+const helmet     = require('helmet');
+const rateLimit  = require('express-rate-limit');
+const cors       = require('cors');
+const path       = require('path');
+const { runScan, validateUrl } = require('./lib/scanner');
 
-app.post("/scan", (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL is required" });
+const app  = express();
+const PORT = process.env.PORT || 5000;
 
-  const command = `
-    curl -I -s ${url} | grep "HTTP" &&
-    curl -s -o /dev/null -w "Load Time: %{time_total}s\\n" ${url} &&
-    curl -s --head ${url} | grep "Server:"
-  `;
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '10kb' }));
+app.use(cors({
+  origin: process.env.CLIENT_URL || ['http://localhost:5173', 'http://localhost:4173'],
+  methods: ['GET', 'POST'],
+}));
 
-  exec(command, (error, stdout) => {
-    if (error) return res.status(500).json({ error: error.message });
+// 10 scans per 15 minutes per IP
+app.use('/api/scan', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Rate limit reached. Please wait before scanning again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
-    res.json({ url, scanResults: stdout });
-  });
+app.post('/api/scan', async (req, res) => {
+  const { url, consent } = req.body;
+  if (!consent)
+    return res.status(400).json({ error: 'You must confirm authorization to scan this website.' });
+  if (!url || typeof url !== 'string' || url.length > 500)
+    return res.status(400).json({ error: 'A valid URL is required.' });
+
+  const result = await runScan(url.trim());
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
 });
 
-app.listen(5000, () => console.log("Server running on port 5000"));
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', version: '2.0.0' }));
+
+// Serve built frontend in production
+app.use(express.static(path.join(__dirname, 'dist')));
+app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+
+app.listen(PORT, () => console.log(`Unicorn Scanner v2 → http://localhost:${PORT}`));
