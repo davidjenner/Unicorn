@@ -16,10 +16,12 @@ interface CommonFiles   { robots?: FileEntry; sitemap?: FileEntry; security?: Fi
 interface IPInfo        { ip?: string; city?: string; region?: string; country?: string; countryCode?: string; latitude?: number; longitude?: number; org?: string; asn?: string; timezone?: string; error?: string }
 interface SocialsResult { emails?: string[]; socials?: Record<string,string|null>; error?: string }
 interface SecurityResult{ gitExposed?: boolean; envExposed?: boolean; phpinfo?: boolean; wpLogin?: boolean; xmlrpc?: boolean; adminExposed?: boolean; readmeHtml?: boolean; licenseExposed?: boolean; backupExposed?: boolean; error?: string }
-interface WPPlugin      { slug: string; name?: string; version?: string; author?: string; rating?: number; activeInstalls?: number }
+interface WPPlugin      { slug: string; name?: string; installedVersion?: string|null; latestVersion?: string|null; versionStatus?: 'current'|'outdated'|'unknown'|'installed_only'|'latest_only'; author?: string; rating?: number; activeInstalls?: number }
 interface WPTheme       { slug?: string|null; name?: string|null; version?: string|null; author?: string|null; authorUri?: string|null; themeUri?: string|null; description?: string|null; license?: string|null }
 interface WPUser        { id: number; name: string; slug: string; url?: string }
-interface WPResult      { detected?: boolean; version?: string|null; theme?: WPTheme; plugins?: WPPlugin[]; users?: WPUser[]|null; restApiEnabled?: boolean; xmlrpcEnabled?: boolean; readmeExposed?: boolean; error?: string }
+interface UsernameRisk  { severity: 'high'|'medium'|'low'|'info'; message: string }
+interface UsernameSec   { restApiExposes?: boolean; authorEnumeration?: boolean; authorEnumData?: Record<string,string>; weakUsernames?: WPUser[]; allDiscovered?: string[]; risks?: UsernameRisk[] }
+interface WPResult      { detected?: boolean; version?: string|null; theme?: WPTheme; plugins?: WPPlugin[]; users?: WPUser[]|null; usernameSecurity?: UsernameSec; restApiEnabled?: boolean; xmlrpcEnabled?: boolean; readmeExposed?: boolean; error?: string }
 interface TechResult    { technologies?: {name:string;category:string}[]; error?: string }
 interface CookieResult  { cookies?: {name:string;httpOnly:boolean;secure:boolean;sameSite:string|null}[]; count?: number; error?: string }
 
@@ -409,63 +411,180 @@ function SecurityCard({ data }: { data: SecurityResult }) {
   );
 }
 
+function VersionBadge({ p }: { p: WPPlugin }) {
+  if (p.versionStatus === 'outdated') {
+    return (
+      <div className="text-right shrink-0">
+        <span className="inline-block bg-red-900/60 text-red-300 text-xs px-2 py-0.5 rounded font-mono">
+          {p.installedVersion} → {p.latestVersion}
+        </span>
+        <p className="text-red-400 text-xs mt-0.5 font-semibold">Outdated</p>
+      </div>
+    );
+  }
+  if (p.versionStatus === 'current') {
+    return (
+      <div className="text-right shrink-0">
+        <span className="inline-block bg-green-900/40 text-green-300 text-xs px-2 py-0.5 rounded font-mono">{p.installedVersion}</span>
+        <p className="text-green-500 text-xs mt-0.5">Up to date</p>
+      </div>
+    );
+  }
+  if (p.versionStatus === 'latest_only' && p.latestVersion) {
+    return (
+      <div className="text-right shrink-0">
+        <Tag>{p.latestVersion}</Tag>
+        <p className="text-slate-500 text-xs mt-0.5">Latest (installed unknown)</p>
+      </div>
+    );
+  }
+  if (p.versionStatus === 'installed_only' && p.installedVersion) {
+    return (
+      <div className="text-right shrink-0">
+        <Tag>{p.installedVersion}</Tag>
+        <p className="text-slate-500 text-xs mt-0.5">Not on wp.org</p>
+      </div>
+    );
+  }
+  return <div className="text-right shrink-0"><span className="text-slate-600 text-xs">Version unknown</span></div>;
+}
+
 function WordPressCard({ data }: { data: WPResult }) {
   if (data.error) return <Card title="WordPress" icon="🔷" defaultOpen={false}><Err msg={data.error} /></Card>;
   if (!data.detected) return <Card title="WordPress" icon="🔷" defaultOpen={false}><p className="text-slate-500 text-sm">Not detected.</p></Card>;
+
+  const outdated = data.plugins?.filter(p => p.versionStatus === 'outdated') ?? [];
+  const highRisks = data.usernameSecurity?.risks?.filter(r => r.severity === 'high') ?? [];
+
   return (
     <Card title="WordPress" icon="🔷">
+      {/* Summary badges */}
       <div className="flex flex-wrap gap-2 mb-4">
         <Badge ok={true} label="WordPress Detected" />
         {data.version && <Tag>Core v{data.version}</Tag>}
         <Badge ok={!!data.restApiEnabled} label="REST API" />
-        <Badge ok={!data.xmlrpcEnabled} warn={data.xmlrpcEnabled} label="xmlrpc.php" />
-        <Badge ok={!data.readmeExposed} warn={data.readmeExposed} label="readme.html" />
+        <Badge ok={!data.xmlrpcEnabled} warn={!!data.xmlrpcEnabled} label="xmlrpc.php" />
+        <Badge ok={!data.readmeExposed} warn={!!data.readmeExposed} label="readme.html" />
+        {outdated.length > 0 && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/50 text-red-300">
+            ⚠ {outdated.length} outdated plugin{outdated.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
       {/* Theme */}
       {data.theme?.slug && (
-        <div className="mb-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Theme</p>
+        <div className="mb-5">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Active Theme</p>
           <div className="bg-slate-800 rounded-lg p-3">
             <p className="text-white font-semibold">{data.theme.name || data.theme.slug}</p>
             {data.theme.version && <p className="text-slate-400 text-xs mt-0.5">v{data.theme.version}</p>}
             {data.theme.author && <p className="text-slate-400 text-xs">By {data.theme.author}</p>}
             {data.theme.description && <p className="text-slate-500 text-xs mt-1 italic">{data.theme.description}</p>}
-            {data.theme.themeUri && <a href={data.theme.themeUri} target="_blank" rel="noopener noreferrer" className="text-cyan-400 text-xs underline mt-1 block">{data.theme.themeUri}</a>}
+            {data.theme.themeUri && (
+              <a href={data.theme.themeUri} target="_blank" rel="noopener noreferrer" className="text-cyan-400 text-xs underline mt-1 block">{data.theme.themeUri}</a>
+            )}
           </div>
         </div>
       )}
 
-      {/* Plugins */}
+      {/* Plugins with version comparison */}
       {data.plugins?.length ? (
-        <div className="mb-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Plugins ({data.plugins.length})</p>
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-500 uppercase tracking-wider">
+              Plugins ({data.plugins.length})
+            </p>
+            {outdated.length > 0 && (
+              <span className="text-red-400 text-xs">{outdated.length} need updating</span>
+            )}
+          </div>
           <div className="space-y-2">
-            {data.plugins.map(p => (
-              <div key={p.slug} className="bg-slate-800 rounded-lg p-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-slate-200 text-sm font-medium">{p.name || p.slug}</p>
-                  {p.author && <p className="text-slate-500 text-xs">By {p.author.replace(/<[^>]+>/g,'')}</p>}
-                  {p.activeInstalls && <p className="text-slate-600 text-xs">{p.activeInstalls.toLocaleString()}+ installs</p>}
+            {data.plugins
+              .sort((a, b) => (a.versionStatus === 'outdated' ? -1 : b.versionStatus === 'outdated' ? 1 : 0))
+              .map(p => (
+                <div key={p.slug}
+                  className={`rounded-lg p-3 flex items-start justify-between gap-3 ${p.versionStatus === 'outdated' ? 'bg-red-950/30 border border-red-800/40' : 'bg-slate-800'}`}>
+                  <div className="min-w-0">
+                    <p className="text-slate-200 text-sm font-medium truncate">{p.name || p.slug}</p>
+                    {p.author && <p className="text-slate-500 text-xs">By {p.author.replace(/<[^>]+>/g,'')}</p>}
+                    {p.activeInstalls != null && (
+                      <p className="text-slate-600 text-xs">{(p.activeInstalls as number).toLocaleString()}+ installs</p>
+                    )}
+                  </div>
+                  <VersionBadge p={p} />
                 </div>
-                <div className="text-right shrink-0">
-                  {p.version && <Tag>v{p.version}</Tag>}
-                  {p.rating && <p className="text-yellow-400 text-xs mt-1">{'★'.repeat(Math.round(p.rating/20))}</p>}
-                </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       ) : null}
 
-      {/* Users */}
+      {/* Username Security */}
+      {data.usernameSecurity && (
+        <div className="mb-5">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Username Security</p>
+
+          {/* Risk items */}
+          <div className="space-y-2 mb-3">
+            {data.usernameSecurity.risks?.map((r, i) => {
+              const colour =
+                r.severity === 'high'   ? 'bg-red-950/40 border-red-800/50 text-red-300' :
+                r.severity === 'medium' ? 'bg-yellow-950/40 border-yellow-800/50 text-yellow-300' :
+                r.severity === 'low'    ? 'bg-blue-950/40 border-blue-800/50 text-blue-300' :
+                                          'bg-slate-800 border-slate-700 text-slate-400';
+              const icon = r.severity === 'high' ? '🔴' : r.severity === 'medium' ? '🟡' : r.severity === 'low' ? '🔵' : '✓';
+              return (
+                <div key={i} className={`flex items-start gap-2 p-2.5 rounded-lg border text-xs ${colour}`}>
+                  <span>{icon}</span>
+                  <span>{r.message}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Discovered usernames */}
+          {data.usernameSecurity.allDiscovered?.length ? (
+            <div className="mb-3">
+              <p className="text-xs text-slate-600 mb-1">Discovered usernames</p>
+              <div className="flex flex-wrap gap-1">
+                {data.usernameSecurity.allDiscovered.map(u => {
+                  const isWeak = data.usernameSecurity?.weakUsernames?.some(w => w.slug === u);
+                  return (
+                    <span key={u}
+                      className={`text-xs px-2 py-0.5 rounded font-mono ${isWeak ? 'bg-red-900/50 text-red-300' : 'bg-slate-800 text-slate-300'}`}>
+                      {isWeak ? '⚠ ' : ''}{u}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Author enumeration findings */}
+          {data.usernameSecurity.authorEnumeration && Object.keys(data.usernameSecurity.authorEnumData ?? {}).length > 0 && (
+            <div>
+              <p className="text-xs text-slate-600 mb-1">Author enumeration (/?author=N)</p>
+              <div className="space-y-1">
+                {Object.entries(data.usernameSecurity.authorEnumData ?? {}).map(([id, slug]) => (
+                  <div key={id} className="flex items-center gap-3 font-mono text-xs bg-slate-800 rounded px-2 py-1">
+                    <span className="text-slate-500">ID {id}</span>
+                    <span className="text-yellow-300">{slug}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Full user list from REST API */}
       {data.users?.length ? (
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Users (via REST API)</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">REST API User List</p>
           <div className="space-y-1">
             {data.users.map(u => (
               <div key={u.id} className="flex items-center gap-3 py-1.5 border-b border-slate-800 last:border-0">
-                <span className="text-slate-400 text-xs w-6 text-right">{u.id}</span>
+                <span className="text-slate-600 text-xs w-6 text-right font-mono">{u.id}</span>
                 <span className="text-slate-200 text-sm">{u.name}</span>
                 <Tag>{u.slug}</Tag>
               </div>

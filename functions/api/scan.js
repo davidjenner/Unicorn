@@ -382,6 +382,16 @@ async function getSecurityChecks(url) {
 
 // ── 14. WordPress deep scan ───────────────────────────────────────────────────
 
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 async function detectWordPress(url) {
   try {
     const base = url.replace(/\/$/, '');
@@ -389,81 +399,137 @@ async function detectWordPress(url) {
       fetchTimeout(url, { headers: { 'User-Agent': UA } }),
       fetchTimeout(`${base}/wp-includes/version.php`, { headers: { 'User-Agent': UA } }),
     ]);
-    const html   = htmlRes.status === 'fulfilled' ? await safeText(htmlRes.value) : '';
-    const wpHit  = versionRes.status === 'fulfilled' && versionRes.value.status === 200;
-    const isWP   = html.includes('wp-content') || html.includes('wp-includes') || wpHit;
+    const html  = htmlRes.status === 'fulfilled' ? await safeText(htmlRes.value) : '';
+    const wpHit = versionRes.status === 'fulfilled' && versionRes.value.status === 200;
+    const isWP  = html.includes('wp-content') || html.includes('wp-includes') || wpHit;
     if (!isWP) return { detected: false };
 
-    // Core version
-    const verMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']WordPress\s+([0-9.]+)/i);
-    let version = verMatch ? verMatch[1] : null;
-
-    // Plugin slugs from HTML
-    const pluginSlugs = [...new Set([...html.matchAll(/wp-content\/plugins\/([a-z0-9\-_]+)/gi)].map(m => m[1]))].slice(0, 20);
-
-    // Theme slug from HTML
+    const verMatch   = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']WordPress\s+([0-9.]+)/i);
+    let version      = verMatch ? verMatch[1] : null;
+    const pluginSlugs= [...new Set([...html.matchAll(/wp-content\/plugins\/([a-z0-9\-_]+)/gi)].map(m => m[1]))].slice(0, 20);
     const themeMatch = html.match(/wp-content\/themes\/([a-z0-9\-_]+)/i);
-    const themeSlug = themeMatch ? themeMatch[1] : null;
+    const themeSlug  = themeMatch ? themeMatch[1] : null;
 
-    // Run detail fetches in parallel
-    const [themeRes, usersRes, readmeRes, xmlrpcRes, ...pluginResponses] = await Promise.allSettled([
-      themeSlug ? fetchTimeout(`${base}/wp-content/themes/${themeSlug}/style.css`, { headers: { 'User-Agent': UA } }) : Promise.resolve(null),
+    // All fetches in one parallel batch.
+    // Plugins come in interleaved pairs: [site_readme_0, wporg_0, site_readme_1, wporg_1 …]
+    const [themeRes, usersRes, readmeRes, xmlrpcRes, ...allPluginRes] = await Promise.allSettled([
+      themeSlug
+        ? fetchTimeout(`${base}/wp-content/themes/${themeSlug}/style.css`, { headers: { 'User-Agent': UA } })
+        : Promise.resolve(null),
       fetchTimeout(`${base}/wp-json/wp/v2/users?per_page=10`, { headers: { 'User-Agent': UA } }),
       fetchTimeout(`${base}/readme.html`, { headers: { 'User-Agent': UA } }),
-      fetchTimeout(`${base}/xmlrpc.php`, { method: 'POST', headers: { 'User-Agent': UA, 'Content-Type': 'text/xml' },
+      fetchTimeout(`${base}/xmlrpc.php`, { method: 'POST',
+        headers: { 'User-Agent': UA, 'Content-Type': 'text/xml' },
         body: '<?xml version="1.0"?><methodCall><methodName>wp.getUsersBlogs</methodName></methodCall>' }),
-      // WordPress.org API for each plugin
-      ...pluginSlugs.map(slug =>
-        fetchTimeout(`https://api.wordpress.org/plugins/info/1.0/${slug}.json`, { headers: { 'User-Agent': UA } }, 8000)
-      ),
+      ...pluginSlugs.flatMap(slug => [
+        fetchTimeout(`${base}/wp-content/plugins/${slug}/readme.txt`, { headers: { 'User-Agent': UA } }, 8000),
+        fetchTimeout(`https://api.wordpress.org/plugins/info/1.0/${slug}.json`, { headers: { 'User-Agent': UA } }, 8000),
+      ]),
     ]);
 
-    // Parse theme style.css
+    // Theme
     let theme = { slug: themeSlug };
     if (themeRes.status === 'fulfilled' && themeRes.value?.status === 200) {
       const css = await safeText(themeRes.value);
       theme = {
-        slug:       themeSlug,
-        name:       pickRegex(css, /Theme Name:\s*(.+)/i),
-        version:    pickRegex(css, /Version:\s*(.+)/i),
-        author:     pickRegex(css, /Author:\s*(?!URI)(.+)/i),
-        authorUri:  pickRegex(css, /Author URI:\s*(.+)/i),
-        themeUri:   pickRegex(css, /Theme URI:\s*(.+)/i),
-        description:pickRegex(css, /Description:\s*(.+)/i),
-        license:    pickRegex(css, /License:\s*(.+)/i),
+        slug:        themeSlug,
+        name:        pickRegex(css, /Theme Name:\s*(.+)/i),
+        version:     pickRegex(css, /Version:\s*(.+)/i),
+        author:      pickRegex(css, /^Author:\s*(?!URI)(.+)/im),
+        authorUri:   pickRegex(css, /Author URI:\s*(.+)/i),
+        themeUri:    pickRegex(css, /Theme URI:\s*(.+)/i),
+        description: pickRegex(css, /Description:\s*(.+)/i),
+        license:     pickRegex(css, /License:\s*(.+)/i),
       };
     }
 
-    // Parse users
+    // Users
     let users = null;
     if (usersRes.status === 'fulfilled' && usersRes.value?.status === 200) {
       const d = await safeJson(usersRes.value);
-      if (Array.isArray(d)) users = d.map(u => ({ id: u.id, name: u.name, slug: u.slug, url: u.url, description: u.description }));
+      if (Array.isArray(d)) users = d.map(u => ({ id: u.id, name: u.name, slug: u.slug, url: u.url }));
     }
     const restApiEnabled = usersRes.status === 'fulfilled' && usersRes.value?.status !== 404;
 
-    // Check version from readme.html if not found in meta
     if (!version && readmeRes.status === 'fulfilled' && readmeRes.value?.status === 200) {
-      const txt = await safeText(readmeRes.value);
-      const m = txt.match(/Version\s+([0-9.]+)/i);
+      const m = (await safeText(readmeRes.value)).match(/Version\s+([0-9.]+)/i);
       if (m) version = m[1];
     }
     const readmeExposed = readmeRes.status === 'fulfilled' && readmeRes.value?.status === 200;
-
-    // xmlrpc enabled?
     const xmlrpcEnabled = xmlrpcRes.status === 'fulfilled' && xmlrpcRes.value?.status === 200;
 
-    // Parse plugin details from WordPress.org API
+    // Plugins — installed version from site readme.txt vs latest from wp.org
     const plugins = await Promise.all(pluginSlugs.map(async (slug, i) => {
-      const res = pluginResponses[i];
-      if (res.status === 'fulfilled' && res.value?.ok) {
-        const d = await safeJson(res.value);
-        if (d && !d.error) return { slug, name: d.name, version: d.version, author: d.author?.replace(/<[^>]+>/g,''), rating: d.rating, activeInstalls: d.active_installs };
+      const siteRes  = allPluginRes[i * 2];
+      const wpOrgRes = allPluginRes[i * 2 + 1];
+
+      let installedVersion = null;
+      if (siteRes.status === 'fulfilled' && siteRes.value?.status === 200) {
+        const txt = await safeText(siteRes.value);
+        const m   = txt.match(/Stable tag:\s*([^\n\r]+)/i);
+        if (m) installedVersion = m[1].trim().replace(/[^0-9.]/g, '') || null;
       }
-      return { slug };
+
+      let name = slug, latestVersion = null, author = null, rating = null, activeInstalls = null;
+      if (wpOrgRes.status === 'fulfilled' && wpOrgRes.value?.ok) {
+        const d = await safeJson(wpOrgRes.value);
+        if (d && !d.error) {
+          name           = d.name || slug;
+          latestVersion  = d.version || null;
+          author         = (d.author || '').replace(/<[^>]+>/g, '');
+          rating         = d.rating;
+          activeInstalls = d.active_installs;
+        }
+      }
+
+      const versionStatus = installedVersion && latestVersion
+        ? (compareVersions(installedVersion, latestVersion) >= 0 ? 'current' : 'outdated')
+        : installedVersion ? 'installed_only' : latestVersion ? 'latest_only' : 'unknown';
+
+      return { slug, name, installedVersion, latestVersion, versionStatus, author, rating, activeInstalls };
     }));
 
-    return { detected: true, version, theme, plugins, users, restApiEnabled, xmlrpcEnabled, readmeExposed };
+    // Username security analysis
+    const WEAK = ['admin','administrator','root','test','demo','wordpress','webmaster','user','guest','support'];
+
+    // Author enumeration via /?author=N (follow redirect, check final URL)
+    const authorEnum = {};
+    await Promise.allSettled([1, 2, 3, 4, 5].map(async id => {
+      try {
+        const r = await fetchTimeout(`${base}/?author=${id}`,
+          { headers: { 'User-Agent': UA }, redirect: 'follow' }, 5000);
+        const finalUrl = r.url || '';
+        if (finalUrl && !finalUrl.includes(`author=${id}`)) {
+          const m = finalUrl.match(/\/author\/([^\/\?#]+)/);
+          if (m) authorEnum[id] = decodeURIComponent(m[1]);
+        }
+      } catch {}
+    }));
+
+    const weakFound    = (users || []).filter(u => WEAK.includes(u.slug?.toLowerCase()));
+    const enumUsernames= Object.values(authorEnum);
+    const allDiscovered= [...new Set([...(users || []).map(u => u.slug), ...enumUsernames])];
+
+    const risks = [];
+    if (weakFound.length > 0)
+      risks.push({ severity: 'high',   message: `Weak/default username(s) detected: ${weakFound.map(u => u.slug).join(', ')}` });
+    if (users?.length)
+      risks.push({ severity: 'medium', message: `${users.length} username(s) exposed via REST API (/wp-json/wp/v2/users)` });
+    if (Object.keys(authorEnum).length > 0)
+      risks.push({ severity: 'medium', message: `Username(s) enumerable via /?author= redirect` });
+    if (!risks.length)
+      risks.push({ severity: 'info',   message: 'No obvious username vulnerabilities detected' });
+
+    const usernameSecurity = {
+      restApiExposes:    !!(users?.length),
+      authorEnumeration: Object.keys(authorEnum).length > 0,
+      authorEnumData:    authorEnum,
+      weakUsernames:     weakFound,
+      allDiscovered,
+      risks,
+    };
+
+    return { detected: true, version, theme, plugins, users, usernameSecurity, restApiEnabled, xmlrpcEnabled, readmeExposed };
   } catch (e) { return { error: e.message }; }
 }
 
