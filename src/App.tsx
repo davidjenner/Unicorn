@@ -644,7 +644,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #09090f 0%, #0f0f1e 100%)' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #09090f 0%, #0f0f1e 100%)' }}>
       <header className="border-b border-slate-800 px-6 py-4 flex items-center gap-3">
         <span className="text-3xl">🦄</span>
         <div>
@@ -654,7 +654,7 @@ export default function App() {
         <span className="ml-auto text-xs text-slate-600 bg-slate-800 px-2 py-1 rounded">v2.1</span>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      <main className="flex-1 max-w-5xl mx-auto px-4 py-8 w-full">
         {/* Form */}
         <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-8 shadow-xl shadow-purple-950/20">
           <h2 className="text-slate-300 font-semibold mb-4 text-xs uppercase tracking-widest">Target URL</h2>
@@ -756,7 +756,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-slate-800 mt-12 bg-slate-900">
+      <footer className="border-t border-slate-800 bg-slate-900">
         <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Brand */}
           <div>
