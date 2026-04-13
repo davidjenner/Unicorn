@@ -756,8 +756,69 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-slate-800 px-6 py-4 text-center text-xs text-slate-600">
-        Unicorn Scanner — for authorized use only. Never scan systems without permission.
+      <footer className="border-t border-slate-800 mt-12 bg-slate-900">
+        <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Brand */}
+          <div>
+            <h3 className="text-white font-semibold text-lg mb-2">🦄 Unicorn Scanner</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Open-source website intelligence and security reconnaissance tool. Fast, web-based, and free.
+            </p>
+            <p className="text-slate-500 text-xs mt-3">For authorized use only. Never scan systems without permission.</p>
+          </div>
+
+          {/* Feedback */}
+          <div>
+            <h3 className="text-white font-semibold text-sm uppercase tracking-wider mb-3">Leave Feedback</h3>
+            <p className="text-slate-400 text-sm mb-3">Found a bug or have a feature request? Let us know on GitHub.</p>
+            <a
+              href="https://github.com/davidjenner/Unicorn/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 transition-colors"
+            >
+              <i className="fab fa-github"></i> Open an Issue
+            </a>
+          </div>
+
+          {/* Other Projects */}
+          <div>
+            <h3 className="text-white font-semibold text-sm uppercase tracking-wider mb-3">Other Projects</h3>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <a href="https://timeboxadhd.netlify.app/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-violet-300 transition-colors">
+                  <i className="fas fa-clock w-4 text-center"></i> TimeBox ADHD
+                </a>
+              </li>
+              <li>
+                <a href="https://outseek.davidjenner.workers.dev/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-violet-300 transition-colors">
+                  <i className="fas fa-search w-4 text-center"></i> Outseek
+                </a>
+              </li>
+              <li>
+                <a href="https://dyslexictext.netlify.app/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-violet-300 transition-colors">
+                  <i className="fas fa-eye w-4 text-center"></i> OpenDyslexic Converter
+                </a>
+              </li>
+              <li>
+                <a href="https://github.com/davidjenner" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-violet-300 transition-colors">
+                  <i className="fab fa-github w-4 text-center"></i> GitHub
+                </a>
+              </li>
+              <li>
+                <a href="https://buymeacoffee.com/godavid" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-violet-300 transition-colors">
+                  <i className="fas fa-coffee w-4 text-center"></i> Buy Me a Coffee
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="border-t border-slate-800 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+          <span>© 2026 David Jenner. All rights reserved.</span>
+          <span>Made with <i className="fas fa-heart text-violet-500"></i> for the security community</span>
+        </div>
       </footer>
     </div>
   );
